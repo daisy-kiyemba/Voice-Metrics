@@ -1,0 +1,430 @@
+---
+title: "emotional~voice"
+author: "Daisy Kiyemba"
+date: "2024-11-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Emotional content abalysis
+
+```{r, echo=TRUE}
+#working directory
+setwd('C:/Users/deeda/Desktop/Brandeis/Second Year/Lab rotation/emotional content')
+
+#clear workspace
+#rm(list=ls())
+
+#importing & reading voice data
+emo <- read.csv('arousal.csv')
+
+#checking for misisng values
+(missing <- sum(is.na(emo))) #missing_values = 0
+
+
+head(emo, 5)
+
+#loading functions
+suppressMessages(require(tidyverse))
+
+library(broom)
+library(kableExtra)
+
+
+```
+
+
+
+
+```{r, echo=TRUE}
+#group as categorical
+emo <- emo %>%
+  mutate(group = as.factor(group)) 
+
+summary(emo)
+
+
+
+
+```
+
+
+
+
+```{r}
+
+#PCA to determine if jitter and shimmer are more different than similar
+
+#scaling variables: standardizing
+
+# data <- data.frame(jitter_scaled <- scale(emo$jitter),
+# shimmer_scaled <- scale(emo$shimmer))
+# 
+# #performing PCA
+# pca <- prcomp(data, center = TRUE, scale. = TRUE)
+# 
+# summary(pca)
+# 
+# #viewing
+# pca$rotation
+# 
+# #reversing the signs
+# pca$rotation <- -1*pca$rotation
+
+#biplot(pca, scale = 0)
+
+# library(factoextra)
+# fviz_pca_var(pca, col.var="contrib")
+# 
+# fviz_eig(pca)
+
+
+#standardizing voice features
+
+emo <- emo %>%
+  mutate_at(c("pitch", "jitter", "shimmer", "HNR"), scale)
+
+
+
+
+```
+
+
+
+
+> Univariate statistics
+> descriptive statistics
+
+```{r, echo=TRUE}
+
+# (des.stats <- sapply(emo[, c('high_arousal', 'low_arousal') %>% group_by("group")],
+#                     function(x) {c(n=length(x), Mean=mean(x), 
+#                                    SD=sd(x), Min=min(x), Max=max(x)
+#                       
+#                     )}))
+
+(des.stats <- emo %>%
+  group_by(group) %>%
+  summarise(
+    across(
+      c(high_arousal, low_arousal),
+      list(
+        n = ~length(.),
+        Mean = ~mean(., na.rm = TRUE),
+        SD = ~sd(., na.rm = TRUE),
+        Min = ~min(., na.rm = TRUE),
+        Max = ~max(., na.rm = TRUE)
+      ),
+      .names = "{col}_{fn}"
+    )
+  ))
+
+
+#raw plot
+plot(subset(emo, select = c(high_arousal, low_arousal, pitch, jitter, shimmer, HNR)))
+
+
+
+```
+
+```{r, echo=TRUE}
+
+# Box plot
+box <- emo %>%
+  pivot_longer(
+    cols = c(high_arousal, low_arousal),
+    names_to = "emotion_type",
+    values_to = "value"
+  )
+
+# Create the boxplot
+ggplot(box, aes(x = group, y = value, fill = emotion_type)) +
+  geom_boxplot() +
+  #facet_wrap(~emotion_type) +
+  labs(
+    title = "Distribution of Emotions by cultural group",
+    x = "Cultural Group",
+    y = "Emotion"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+
+
+```
+
+```{r}
+
+#performing log transformation for the emotion variables to normalize the data
+emo <- emo %>% 
+  mutate(log2_HA =log2(high_arousal),
+         log2_LA =log2(low_arousal))
+
+
+```
+
+
+
+> Multiple regression analysis
+
+```{r, echo=TRUE}
+
+#creating a separate data sets for each group
+
+group1 <- emo %>%
+  filter(group == 1)
+
+
+group2 <- emo %>%
+  filter(group == 2)
+
+
+group3 <- emo %>%
+  filter(group == 3)
+
+
+```
+
+
+> # Fitting models for group 1: High & low arousal 
+
+```{r}
+
+m_group1_high <- lm(log2_HA ~ shimmer + pitch + jitter, data = group1)
+
+summary(m_group1_high)
+
+
+m_group1_low <- lm(log2_LA ~ shimmer + pitch + jitter, data = group1)
+
+summary(m_group1_low)
+
+
+
+
+```
+
+
+
+
+> # Fitting model for group 2: High & Low arousal
+
+```{r}
+
+m_group2_high <- lm(log2_HA ~ shimmer + pitch + jitter, data = group2)
+
+summary(m_group2_high)
+
+
+m_group2_low <- lm(low_arousal ~ shimmer + pitch + jitter, data = group2)
+
+summary(m_group2_low)
+
+
+
+
+
+
+
+```
+
+
+
+
+
+
+> # Fitting model fro group 3: High & Low arousal
+
+```{r}
+
+m_group3_high <- lm(high_arousal ~ shimmer + pitch + jitter, data = group3)
+
+summary(m_group3_high)
+
+
+m_group3_low <- lm(low_arousal ~ shimmer + pitch + jitter, data = group3)
+
+summary(m_group3_low)
+
+
+
+
+
+
+
+```
+
+
+
+
+> Across groups?
+
+```{r}
+
+#high arousal across groups
+m1 <- lm(high_arousal ~ shimmer + pitch + jitter, data = emo)
+
+summary(m1)
+
+#low arousal across groups
+m2 <- lm(low_arousal ~ shimmer + pitch + jitter, data = emo)
+summary(m2)
+
+
+
+```
+
+
+
+
+
+#sentiment Analysis
+
+```{r, echo=TRUE}
+
+#importing & reading voice data
+sent <- read.csv('sentiment.csv')
+
+#checking for misisng values
+(missing <- sum(is.na(sent))) #missing_values = 0
+
+head(sent, 5)
+
+
+
+```
+
+
+
+```{r}
+
+#group as categorical
+sent <- sent %>%
+  mutate(group = as.factor(group)) 
+
+summary(sent)
+
+#standardizing voice features
+
+emo <- emo %>%
+  mutate_at(c("pitch", "jitter", "shimmer", "HNR"), scale)
+
+```
+
+#descriptives for positive, neutral and negative emotions
+
+```{r, echo=TRUE}
+
+(des.stats <- sent %>%
+  group_by(group) %>%
+  summarise(
+    across(
+      c(positive, neutral, negative),
+      list(
+        n = ~length(.),
+        Mean = ~mean(., na.rm = TRUE),
+        SD = ~sd(., na.rm = TRUE),
+        Min = ~min(., na.rm = TRUE),
+        Max = ~max(., na.rm = TRUE)
+      ),
+      .names = "{col}_{fn}"
+    )
+  ))
+
+#raw plot
+plot(subset(sent, select = c(positive, neutral, negative, pitch, jitter, shimmer, HNR)))
+
+```
+
+#Multiple regression analysis
+
+```{r, echo=TRUE}
+
+#creating a separate data sets for each group
+
+group1 <- sent %>%
+  filter(group == 1)
+
+
+group2 <- sent %>%
+  filter(group == 2)
+
+
+group3 <- sent %>%
+  filter(group == 3)
+
+
+
+```
+
+
+
+#Fitting models for group 1
+
+```{r, echo=TRUE}
+
+m_group1_pos <- lm(positive ~ shimmer + pitch + jitter, data = group1)
+
+summary(m_group1_pos)
+
+m_group1_neg <- lm(negative ~ shimmer + pitch + jitter, data = group1)
+
+summary(m_group1_neg)
+
+```
+
+#Fitting models for group 2
+
+```{r, echo=TRUE}
+
+m_group2_pos <- lm(positive ~ shimmer + pitch + jitter, data = group2)
+
+summary(m_group2_pos)
+
+m_group2_neg <- lm(negative ~ shimmer + pitch + jitter, data = group2)
+
+summary(m_group2_neg)
+
+```
+
+
+
+```{r}
+
+m_group3_pos <- lm(positive ~ shimmer + pitch + jitter, data = group3)
+
+summary(m_group3_pos)
+
+m_group3_neg <- lm(negative ~ shimmer + pitch + jitter, data = group3)
+
+summary(m_group3_neg)
+
+
+
+
+
+```
+
+
+#Across groups
+
+```{r}
+
+m1_sent <- lm(positive ~ shimmer + pitch + jitter, data = sent)
+
+summary(m1_sent)
+
+m2_sent <- lm(negative ~ shimmer + pitch + jitter, data = sent)
+
+summary(m2_sent)
+
+
+
+```
+

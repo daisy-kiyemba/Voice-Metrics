@@ -1,0 +1,727 @@
+---
+title: "Final project"
+author: "Daisy Kiyemba"
+date: "2024-11-04"
+output: html_document
+---
+
+> Write Abstract here
+
+>define the variables
+
+
+
+
+```{r, echo=TRUE}
+
+###your code to set the working directory 
+setwd("C:/Users/deeda/Desktop/Brandeis/Second Year/Courses/Psy123a_F2024")
+
+##clear the R working space
+#rm(list=ls())
+
+##loading the packages you may use in this assignment below
+suppressMessages(require(tidyverse))
+suppressMessages(require(rstan))
+suppressMessages(require(rstanarm))
+suppressMessages(require(bayesplot))
+suppressMessages(require(bayesrules))
+suppressMessages(require(bayestestR))
+
+#For execution on a local, multicore CPU with excess RAM 
+options(mc.cores = parallel::detectCores())
+#To avoid recompilation of unchanged Stan programs
+
+#rstan_options(auto_write = TRUE)
+#For within-chain threading using `reduce_sum()` or `map_rect()` Stan functions,
+#change `threads_per_chain` option:
+#rstan_options(threads_per_chain = 1)
+
+
+
+
+
+```
+
+
+&nbsp; 
+
+## Methods
+> where you introduce your data; describe how each variable in the data is measured, the type of the variable (e.g. continuous vs. categorical), the range of valid values of the continuous variable(s) or the categories of the categorical variable(s); any missing values and, if any, ways to deal with missing values; present your analytic plan (i.e., lay out the steps of your data analyses).
+
+
+### Data preparation & analysis
+
+```{r, echo=TRUE}
+#reading csv file
+voice <- read.csv("emotions_HK.csv")
+
+#data screening
+
+#taking a pick at the data
+head(voice, 3)
+
+#checking for missing data
+sum(is.na(voice)) > 0 
+
+#making sure group is a categorical variable
+voice <- voice %>%
+  
+  mutate(group = as.factor(group))
+
+summary(voice)
+```
+
+&nbsp; 
+
+### Data preparation & analysis
+
+#### Descriptive statistics
+
+```{r, echo=TRUE}
+
+#summary stats
+#summary(voice)
+
+##generating an indicator variable 'at3'
+
+voice<-within(voice, {
+  American <-ifelse(group == '1', 1, 0)
+  Chinese <-ifelse(group == '2', 1, 0)
+  HK <-ifelse(group == '3', 1, 0)
+  })
+
+
+##to verify with cross-tabulation
+voice[sample(1:nrow(voice), 5), ]
+
+```
+
+
+#### Univariate statistics
+
+> Shimmer, the box plot show that:
+        on average, Americans (group=1) have a higher shimmer than Chinese (group=2) and
+        the variation in group2 is likely higher than group1.
+
+```{r, echo=TRUE}
+
+#Distribution of shimmer by group
+ggplot(data=voice, aes(x=group, y=shimmer, group=group))+
+  geom_boxplot(aes(col=group))+
+  labs(title='The boxplot of shimmer by group')
+
+
+```
+
+
+#### Emotions: High & Low arousal
+
+> High arousal, the box plot shows that:
+        on average, Americans (group=1) have a slightly lower high arousal than Chinese (group=2) and the variation in group2 is higher than group1.
+        
+> Low arousal, the box plot shows that:
+        on average, Chinese (group=2) have a higher low arousal than Americans (group=1) and the variation in group2 is higher than group1.
+
+```{r, echo=TRUE}
+
+#Distribution of high arousal emotions by group
+ggplot(data=voice, aes(x=group, y=high_arousal, group=group))+
+  geom_boxplot(aes(col=group))+
+  labs(title='The boxplot of high arousal emotions by group')
+
+#low arousal emotion
+ggplot(data=voice, aes(x=group, y=low_arousal, group=group))+
+  geom_boxplot(aes(col=group))+
+  labs(title='The boxplot of high arousal emotions by group')
+
+```
+
+
+
+
+&nbsp; 
+
+### Question 1
+
+Do voice characteristics differ by culture?
+
+#### Statistical Model
+
+$$ VoiceMetric = \beta_0 + \beta_1 \text{Chinese} + \beta_2 \text{HK} + \epsilon $$
+Where:  
+Chinese and HK in this model are indicator variables.
+
+β0 is the average voice_metric (i.e., shimmer or jitter) in the American group (when Chinese=0; HK=0):
+          Yi = β0 + ϵi
+          
+β1 is the mean difference in voice_metric (i.e., shimmer or jitter) between Chinese and Americans (when HK=0)
+so, β0 + β1 is the mean shimmer in the Chinese group:
+          Yi = β0 + β1 + ϵi
+
+β2 is the mean difference in voice_metric (i.e., shimmer or jitter) between HK and Americans (when Chinese=0)
+so, β0 + β2 is the mean shimmer in the HK group:
+          Yi = β0 + β2 + ϵi
+
+ϵi is the residual error term
+          where:  ϵi ~ N(0, sigma^2)
+              and: sigma is the standard deviation of the residual ϵi
+
+The parameters of interest are β1 and β2
+
+For all the parameters, I will use default priors in stan_glm() i.e weak informative priors
+
+
+
+### Fitting models
+
+#### Shimmer
+
+```{r, echo=TRUE}
+
+shimmer.fit <- stan_glm(shimmer ~ Chinese + HK, data=voice,
+                        family = gaussian,##linear regression
+                 ##default priors are used here
+                   chains=4, iter=20000, seed=6308, #mcmc info.
+                   refresh=0)
+                        
+
+#summary(shimmer.fit)
+
+```
+
+
+### Performing MCMC diagonistics and PPC
+
+```{r, echo=TRUE}
+
+
+#traceplot
+mcmc_trace(shimmer.fit)  +
+  labs(title='The trace plot of four chains overlay', 
+       x='the number of iterations', y='parameter')
+
+
+#density plots for each parameter
+mcmc_dens_overlay(shimmer.fit)
+
+#autocorrelation plot 
+mcmc_acf(shimmer.fit) 
+ 
+
+##rhat
+cat('\n R hat statistic \n')
+rhat(shimmer.fit)
+
+
+set.seed(0)
+pp_check(shimmer.fit)
+
+
+
+```
+
+##### Numeric statistics
+
+```{r, echo=TRUE}
+
+#translatiing stanfit object into a vector
+shimmer.sim <- as.data.frame(shimmer.fit) #%>%
+  # mutate(d.at2_at1=tasteat2/sigma,
+  #        d.at3_at1=tasteat3/sigma,
+  #        d.at2_at3=(tasteat2-tasteat3)/sigma)
+
+
+##helper function to collect summary stats together
+my.des<-function(x, ci.level=.95, digits=2) {
+  out<-c(mean=mean(x), median=median(x), 
+    map=unname(as.numeric(bayestestR::map_estimate(x))), 
+    sd=sd(x), 
+    ETI=c(bayestestR::ci(x, ci=ci.level)$CI_low,
+          bayestestR::ci(x,ci=ci.level)$CI_high), 
+    HDI=c(bayestestR::ci(x, method='HDI',ci=ci.level)$CI_low,
+          bayestestR::ci(x, method='HDI',ci=ci.level)$CI_high))
+  return(round(out, digits))
+}
+
+cat('posterior summaries for the parameter(s) of interest\n')
+
+#summary table for numeric variables in the dataset
+apply(shimmer.sim,2, my.des)
+
+
+
+```
+##### posterior means distribution by cultural group
+
+```{r}
+
+shimmer.sim<-within(shimmer.sim, {
+  American=`(Intercept)`
+  Chinese=American+Chinese
+  HK=American+HK
+})
+
+mcmc_areas(shimmer.sim, pars=c('American', 'Chinese', 'HK'), prob=.95)+
+  labs(title='Posterior distributions of mean shimmer in each cultural group', x ='Shimmer(%)', y='cultural group')
+
+
+
+```
+
+#### mean differences of shimmer
+
+```{r}
+
+mcmc_areas(shimmer.fit, pars=c('Chinese','HK'), prob=.95)+
+  labs(title='Posterior distribution of means difference compared to the American group. 
+       with 95% ETI and median',
+       x='Means difference between cultural groups')
+
+
+
+```
+
+
+
+&nbsp; 
+
+#### Jitter
+
+```{r, echo=TRUE}
+
+jitter.fit <- stan_glm(jitter ~ Chinese + HK, data=voice,
+                        family = gaussian,##linear regression
+                 ##default priors are used here
+                   chains=4, iter=20000, seed=98132, #mcmc info.
+                   refresh=0)
+                        
+
+#summary(jitter.fit)
+
+
+
+```
+
+
+### Performing MCMC diagonistics
+
+```{r, echo=TRUE}
+
+
+#traceplot
+mcmc_trace(jitter.fit)  +
+  labs(title='The trace plot of four chains overlay', 
+       x='the number of iterations', y='parameter')
+
+
+#density plots for each parameter
+mcmc_dens_overlay(jitter.fit)
+
+#autocorrelation plot 
+mcmc_acf(jitter.fit) 
+ 
+
+##rhat
+cat('\n R hat statistic \n')
+rhat(jitter.fit)
+
+
+set.seed(0)
+pp_check(jitter.fit)
+
+
+
+```
+
+
+##### Numeric statistics
+
+```{r, echo=TRUE}
+
+#translatiing stanfit object into a vector
+jitter.sim <- as.data.frame(jitter.fit) 
+  
+
+##helper function to collect summary stats together
+my.des<-function(x, ci.level=.95, digits=2) {
+  out<-c(mean=mean(x), median=median(x), 
+    map=unname(as.numeric(bayestestR::map_estimate(x))), 
+    sd=sd(x), 
+    ETI=c(bayestestR::ci(x, ci=ci.level)$CI_low,
+          bayestestR::ci(x,ci=ci.level)$CI_high), 
+    HDI=c(bayestestR::ci(x, method='HDI',ci=ci.level)$CI_low,
+          bayestestR::ci(x, method='HDI',ci=ci.level)$CI_high))
+  return(round(out, digits))
+}
+
+cat('posterior summaries for the parameter(s) of interest\n')
+
+#summary table for numeric variables in the dataset
+apply(jitter.sim,2, my.des)
+
+
+
+```
+
+##### posterior means distribution of Jitter by cultural group
+
+```{r}
+
+jitter.sim<-within(jitter.sim, {
+  American=`(Intercept)`
+  Chinese=American+Chinese
+  HK=American+HK
+})
+
+mcmc_areas(jitter.sim, pars=c('American', 'Chinese', 'HK'), prob=.95)+
+  labs(title='Posterior distributions of mean jitter in each cultural group', x ='Jitter(%)', y='cultural group')
+
+
+
+```
+
+#### mean differences of shimmer
+
+```{r}
+
+mcmc_areas(jitter.fit, pars=c('Chinese','HK'), prob=.95)+
+  labs(title='Posterior distribution of means difference compared to the American group. 
+       with 95% ETI and median',
+       x='Means difference between cultural groups')
+
+
+
+```
+
+
+&nbsp; 
+
+
+#### Pitch
+
+```{r, echo=TRUE}
+
+pitch.fit <- stan_glm(pitch ~ Chinese + HK, data=voice,
+                        family = gaussian,##linear regression
+                 ##default priors are used here
+                   chains=4, iter=20000, seed=788, #mcmc info.
+                   refresh=0)
+                        
+
+#summary(pitch.fit)
+
+
+
+```
+
+
+### Performing MCMC diagonistics
+
+```{r, echo=TRUE}
+
+
+#traceplot
+mcmc_trace(pitch.fit)  +
+  labs(title='The trace plot of four chains overlay', 
+       x='the number of iterations', y='parameter')
+
+
+#density plots for each parameter
+mcmc_dens_overlay(pitch.fit)
+
+#autocorrelation plot 
+mcmc_acf(pitch.fit) 
+ 
+
+##rhat
+cat('\n R hat statistic \n')
+rhat(pitch.fit)
+
+
+
+
+
+
+```
+
+
+##### Numeric statistics
+
+```{r, echo=TRUE}
+
+#translatiing stanfit object into a vector
+pitch.sim <- as.data.frame(pitch.fit) 
+  
+
+##helper function to collect summary stats together
+my.des<-function(x, ci.level=.95, digits=2) {
+  out<-c(mean=mean(x), median=median(x), 
+    map=unname(as.numeric(bayestestR::map_estimate(x))), 
+    sd=sd(x), 
+    ETI=c(bayestestR::ci(x, ci=ci.level)$CI_low,
+          bayestestR::ci(x,ci=ci.level)$CI_high), 
+    HDI=c(bayestestR::ci(x, method='HDI',ci=ci.level)$CI_low,
+          bayestestR::ci(x, method='HDI',ci=ci.level)$CI_high))
+  return(round(out, digits))
+}
+
+cat('posterior summaries for the parameter(s) of interest\n')
+
+#summary table for numeric variables in the dataset
+apply(pitch.sim,2, my.des)
+
+
+
+```
+
+
+##### posterior means distribution of pitch by cultural group
+
+```{r}
+
+pitch.sim<-within(pitch.sim, {
+  American=`(Intercept)`
+  Chinese=American+Chinese
+  HK=American+HK
+})
+
+mcmc_areas(pitch.sim, pars=c('American', 'Chinese', 'HK'), prob=.95)+
+  labs(title='Posterior distributions of means pitch for each cultural group', x ='Pitch(Hz)', y='cultural group')
+
+
+
+```
+
+
+&nbsp; 
+
+
+#### Harmonics-to-noise-ratio (HNR)
+
+```{r}
+
+HNR.fit <- stan_glm(HNR ~ Chinese + HK, data=voice,
+                        family = gaussian,##linear regression
+                 ##default priors are used here
+                   chains=4, iter=20000, seed=67864, #mcmc info.
+                   refresh=0)
+                        
+
+#summary(HNR.fit)
+
+
+
+```
+
+
+
+### Performing MCMC diagonistics
+
+```{r, echo=TRUE}
+
+
+#traceplot
+mcmc_trace(HNR.fit)  +
+  labs(title='The trace plot of four chains overlay', 
+       x='the number of iterations', y='parameter')
+
+
+#density plots for each parameter
+mcmc_dens_overlay(HNR.fit)
+
+#autocorrelation plot 
+mcmc_acf(HNR.fit) 
+ 
+
+##rhat
+cat('\n R hat statistic \n')
+rhat(HNR.fit)
+
+
+
+
+
+
+```
+
+##### Numeric statistics
+
+```{r, echo=TRUE}
+
+#translatiing stanfit object into a vector
+HNR.sim <- as.data.frame(HNR.fit) 
+  
+
+##helper function to collect summary stats together
+my.des<-function(x, ci.level=.95, digits=2) {
+  out<-c(mean=mean(x), median=median(x), 
+    map=unname(as.numeric(bayestestR::map_estimate(x))), 
+    sd=sd(x), 
+    ETI=c(bayestestR::ci(x, ci=ci.level)$CI_low,
+          bayestestR::ci(x,ci=ci.level)$CI_high), 
+    HDI=c(bayestestR::ci(x, method='HDI',ci=ci.level)$CI_low,
+          bayestestR::ci(x, method='HDI',ci=ci.level)$CI_high))
+  return(round(out, digits))
+}
+
+cat('posterior summaries for the parameter(s) of interest\n')
+
+#summary table for numeric variables in the dataset
+apply(HNR.sim,2, my.des)
+
+
+
+```
+
+
+##### posterior means distribution of HNR by cultural group
+
+```{r}
+
+HNR.sim<-within(HNR.sim, {
+  American=`(Intercept)`
+  Chinese=American+Chinese
+  HK=American+HK
+})
+
+mcmc_areas(HNR.sim, pars=c('American', 'Chinese', 'HK'), prob=.95)+
+  labs(title='Posterior distributions of means HNR for each cultural group', x ='HNR(dB)', y='cultural group')
+
+
+
+```
+
+
+
+&nbsp; 
+
+Question 2
+
+Holding the culture groups constant, is there a relationship between emotions and shimmer.
+
+##### Statistical Model
+
+```{r, echo=TRUE}
+
+
+
+
+```
+
+
+&nbsp; 
+
+Question 3
+
+Does the relationship between emotions and voice metrics differ by culture?
+
+> 
+
+```{r}
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
