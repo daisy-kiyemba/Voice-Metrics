@@ -1,5 +1,5 @@
 ---
-title: "Final project"
+title: "Bayesian Final project"
 author: "Daisy Kiyemba"
 date: "2024-11-04"
 output: html_document
@@ -15,7 +15,7 @@ output: html_document
 ```{r, echo=TRUE}
 
 ###your code to set the working directory 
-setwd("C:/Users/deeda/Desktop/Brandeis/Second Year/Courses/Psy123a_F2024")
+setwd("insert here")
 
 ##clear the R working space
 #rm(list=ls())
@@ -625,6 +625,7 @@ Does the relationship between emotions and voice metrics differ by culture?
 
 
 ```
+
 
 
 
